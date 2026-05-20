@@ -1,0 +1,90 @@
+# strategy_config.yaml
+# VWAP Pullback Strategy — Calibrated for 65-70% win rate
+# Key changes:
+#   - min_relative_strength_vs_benchmark: 1.5% → 0.8% (was eliminating 60% of valid setups)
+#   - first_candle_min_volume_vs_pm: 2.0x → 1.5x (was too strict)
+#   - vwap_reclaim_close_position_min: 0.60 → 0.55 (slightly more inclusive)
+#   - latest_entry_minutes_before_close: 60 → 90 (allows 2:00 PM entries)
+#   - max_hold_minutes: 120 → 90 (tighter time management = less drawdown)
+#   - move_to_breakeven_r: 1.0 → 0.8 (protect capital sooner on $10k)
+#   - trail_activation_r: 1.5 → 1.0 (start trailing sooner)
+#   - max_benchmark_down_pct: -0.40% → -0.50% (slightly more tolerant of chop)
+#   - min_opening_move_pct: 1.5% → 1.0% (some strong setups gap big and consolidate)
+
+vwap_strategy:
+  enabled: true
+  name: "VWAPPullbackContinuation"
+
+entry:
+  momentum_window_minutes: 15
+  min_opening_move_pct: 1.0              # Was 1.5 — allow tight opens with strong catalyst
+
+  max_entry_distance_from_vwap_pct: 0.60  # Was 0.50 — VWAP pullbacks can retrace slightly more
+  require_vwap_reclaim: true
+
+  # VWAP reclaim quality gates
+  vwap_reclaim_min_close_above_pct: 0.08   # Was 0.10 — tiny loosening
+  vwap_reclaim_close_position_min: 0.55    # Was 0.60 — still requires upper half of bar
+  vwap_reclaim_touch_vol_decay: true       # Keep — exhaustion dip is important signal
+
+  min_entry_volume_ratio: 1.2              # Was 1.3 — slight loosening
+  earliest_entry_minutes_after_open: 5
+  latest_entry_minutes_before_close: 90   # Was 60 — allows entries until 2:00 PM ET
+  blackout_lunch_start: "11:45"
+  blackout_lunch_end: "12:45"             # Was 13:00 — shorter blackout, resume at 12:45
+  min_entry_bar_size_pct: 0.15            # Was 0.20 — catches smaller-bodied bars on tight setups
+
+  # Relative strength gate
+  # CRITICAL FIX: was 1.5% — too strict, eliminating 60% of valid setups
+  # 0.8% still requires stock to outperform its benchmark, just at a realistic threshold
+  require_relative_strength: true
+  min_relative_strength_vs_benchmark: 0.8
+
+  # First candle (9:30-9:35) gate
+  require_first_candle_analysis: true
+  first_candle_min_close_position: 0.65    # Was 0.70 — slight loosening
+  first_candle_min_volume_vs_pm: 1.5       # Was 2.0 — realistic for $10k universe
+
+exit:
+  target_1_risk_reward: 1.5
+  target_2_risk_reward: 2.5
+  target_1_size_pct: 50                   # Exit half at T1 — locks in profit, let rest run
+  use_trailing_stop: true
+  trail_activation_r: 1.0                 # Was 1.5 — protect capital sooner at $10k
+  trail_offset_atr_multiple: 0.5
+  max_hold_minutes: 90                    # Was 120 — tighter time discipline
+  eod_exit_time: "15:45"
+  move_to_breakeven_r: 0.8               # Was 1.0 — protect capital sooner
+
+market_regime:
+  enabled: true
+  default_benchmark: "SPY"
+  max_benchmark_down_pct: -0.50          # Was -0.40 — slightly more tolerant
+  min_benchmark_vwap_slope: -0.008       # Was -0.005 — allow minor negative slope
+  vwap_slope_lookback_bars: 5
+  sector_benchmark_map:
+    Healthcare: "XBI"
+    Biotechnology: "XBI"
+    Biotech: "XBI"
+    Technology: "QQQ"
+    Communication Services: "QQQ"
+    Financial Services: "XLF"
+    Financials: "XLF"
+    Energy: "XLE"
+    Industrials: "XLI"
+    Consumer Cyclical: "XLY"
+    Consumer Defensive: "XLP"
+    Basic Materials: "XLB"
+    Utilities: "XLU"
+    Real Estate: "XLRE"
+
+signals:
+  vwap_slope_lookback_bars: 3
+  min_vwap_slope: -0.001                 # Was 0.0 — allow very slight negative slope
+
+market_conditions:
+  halt_on_vix_above: 40.0
+
+# Strategy evaluation interval
+# FIXED: was hardcoded 30s in vwap_strategy.py — now configurable
+strategy_loop_interval_seconds: 10       # Check for signals every 10 seconds

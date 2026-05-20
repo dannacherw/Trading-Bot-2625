@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Quant Command</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#060a10;font-family:'Courier New',monospace}
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-track{background:#0d1117}
+  ::-webkit-scrollbar-thumb{background:#374151;border-radius:3px}
+  input::placeholder{color:#4b5563}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+// ── MOCK DATA (replace with API calls once backend is live) ──────────────────
+const MOCK_SCANS = [
+  {symbol:"AAPL",score:0.82,gap_pct:7.4,rel_vol:14.2,spread_pct:0.08,catalyst:"EARNINGS",catalyst_conf:0.91,trend_quality:0.88,float_rotation:6.2,pm_dollar_vol:42000000,passes:true,archetypes:["STRONG_GAPPER","CATALYST_BACKED","LIKELY_LEADER"],filter_reason:null},
+  {symbol:"NVDA",score:0.77,gap_pct:5.1,rel_vol:9.8, spread_pct:0.11,catalyst:"EARNINGS_GUIDANCE",catalyst_conf:0.85,trend_quality:0.79,float_rotation:4.8,pm_dollar_vol:31000000,passes:true,archetypes:["CATALYST_BACKED","ORDERLY_TREND"],filter_reason:null},
+  {symbol:"MSTR",score:0.71,gap_pct:11.2,rel_vol:18.4,spread_pct:0.19,catalyst:"SECTOR_ROTATION",catalyst_conf:0.62,trend_quality:0.54,float_rotation:8.9,pm_dollar_vol:22000000,passes:true,archetypes:["STRONG_GAPPER","VOLATILE"],filter_reason:null},
+  {symbol:"TSLA",score:0.64,gap_pct:4.2,rel_vol:5.3, spread_pct:0.09,catalyst:null,catalyst_conf:0,trend_quality:0.71,float_rotation:2.1,pm_dollar_vol:19000000,passes:true,archetypes:["ORDERLY_TREND"],filter_reason:null},
+  {symbol:"AMD", score:0.59,gap_pct:3.8,rel_vol:4.1, spread_pct:0.13,catalyst:null,catalyst_conf:0,trend_quality:0.65,float_rotation:1.8,pm_dollar_vol:12000000,passes:true,archetypes:[],filter_reason:null},
+  {symbol:"GME", score:0.22,gap_pct:2.1,rel_vol:1.8, spread_pct:0.38,catalyst:null,catalyst_conf:0,trend_quality:0.31,float_rotation:0.9,pm_dollar_vol:800000, passes:false,archetypes:["SPREAD_RISK"],filter_reason:"spread 0.38% > max 0.25%"},
+  {symbol:"BBBY",score:0.18,gap_pct:1.2,rel_vol:1.4, spread_pct:0.52,catalyst:null,catalyst_conf:0,trend_quality:0.22,float_rotation:0.4,pm_dollar_vol:400000, passes:false,archetypes:["SPREAD_RISK"],filter_reason:"gap 1.2% < min 6.0% (no catalyst)"},
+  {symbol:"RIVN",score:0.31,gap_pct:2.8,rel_vol:2.1, spread_pct:0.29,catalyst:null,catalyst_conf:0,trend_quality:0.45,float_rotation:1.2,pm_dollar_vol:3200000,passes:false,archetypes:[],filter_reason:"spread 0.29% > max 0.25%"},
+];
+const MOCK_POSITIONS = [
+  {symbol:"AAPL",side:"LONG",entry:182.45,current:185.20,stop:180.10,target1:186.35,target2:190.00,qty:100,entry_time:"09:31:22",strategy:"VWAP_RECLAIM",unrealized_pnl:275.00,r_multiple:1.18},
+  {symbol:"NVDA",side:"LONG",entry:445.20,current:443.80,stop:441.00,target1:450.60,target2:458.40,qty:25, entry_time:"09:34:10",strategy:"FIRST_CANDLE",unrealized_pnl:-35.00,r_multiple:-0.33},
+];
+const MOCK_TRADES = [
+  {symbol:"MSTR",side:"LONG",entry:312.10,exit:319.40,qty:50, entry_time:"09:31:05",exit_time:"09:48:32",r_multiple:1.92, net_pnl:365.00, exit_reason:"TARGET_1", strategy:"VWAP_RECLAIM"},
+  {symbol:"TSLA",side:"LONG",entry:224.60,exit:222.10,qty:80, entry_time:"09:32:41",exit_time:"09:39:18",r_multiple:-1.00,net_pnl:-200.00,exit_reason:"STOP_LOSS", strategy:"FIRST_CANDLE"},
+  {symbol:"AMD", side:"LONG",entry:168.90,exit:170.80,qty:120,entry_time:"09:33:15",exit_time:"10:02:44",r_multiple:0.91, net_pnl:228.00, exit_reason:"MANUAL",    strategy:"VWAP_RECLAIM"},
+];
+const MOCK_MISSED = [
+  {symbol:"GME", filter:"spread > max",filter_val:"0.38%",required:"< 0.25%",later_hit_1r:true, later_hit_2r:false,max_move:"+1.4R"},
+  {symbol:"RIVN",filter:"spread > max",filter_val:"0.29%",required:"< 0.25%",later_hit_1r:true, later_hit_2r:true, max_move:"+2.1R"},
+];
+const MOCK_HEALTH = {bot:"RUNNING",broker:"CONNECTED",data_feed:"CONNECTED",mode:"PAPER",latency_ms:12,errors:0,last_scan:"09:58:41",kill_switch:false,uptime:"6h 22m"};
+const MOCK_DAILY  = {pnl:393,win_rate:0.667,trades:3,avg_r:0.61,max_dd:-200,open_risk:2.84,loss_limit_rem:1607};
+const MOCK_MARKET = {spy_gap:0.41,qqq_gap:0.68,iwm_gap:-0.12,vix:16.8,regime:"RISK_ON_MOMENTUM",breadth:"68% advancing"};
+
+// ── UTILS ────────────────────────────────────────────────────────────────────
+const fmt       = (n,d=2) => `${n>=0?"+":""}${Number(n).toFixed(d)}`;
+const fmtD      = (n) => `${n>=0?"+":"-"}$${Math.abs(n).toLocaleString("en-US",{maximumFractionDigits:0})}`;
+const fmtP      = (n) => `${n>=0?"+":""}${Number(n).toFixed(2)}%`;
+const scoreCol  = (s) => s>=0.75?"#00e5a0":s>=0.55?"#f0c040":s>=0.40?"#f08040":"#e05050";
+const pnlCol    = (n) => n>=0?"#00e5a0":"#e05050";
+
+// ── PRIMITIVES ───────────────────────────────────────────────────────────────
+function Dot({status}){
+  const c=(status==="RUNNING"||status==="CONNECTED")?"#00e5a0":"#e05050";
+  return <span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:c,marginRight:6,boxShadow:`0 0 6px ${c}`,flexShrink:0}}/>;
+}
+function Bar({value}){
+  return(
+    <div style={{height:3,background:"#1a1f2e",borderRadius:2,overflow:"hidden",marginTop:3}}>
+      <div style={{height:"100%",width:`${Math.min(100,Math.max(0,value*100))}%`,background:scoreCol(value),borderRadius:2}}/>
+    </div>
+  );
+}
+function StatCard({label,value,sub,vc}){
+  return(
+    <div style={{background:"#0d1117",border:"1px solid #1f2937",borderRadius:8,padding:"13px 16px"}}>
+      <div style={{fontSize:9,color:"#6b7280",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:3}}>{label}</div>
+      <div style={{fontSize:19,fontWeight:700,color:vc||"#e8eaf0",fontFamily:"monospace",lineHeight:1.2}}>{value}</div>
+      {sub&&<div style={{fontSize:10,color:"#6b7280",marginTop:2}}>{sub}</div>}
+    </div>
+  );
+}
+function SH({children,accent="#3b82f6"}){
+  return(
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:13}}>
+      <div style={{width:3,height:16,background:accent,borderRadius:2,flexShrink:0}}/>
+      <span style={{fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.15em",color:"#9ca3af"}}>{children}</span>
+    </div>
+  );
+}
+function Card({children,style={}}){
+  return <div style={{background:"#0d1117",border:"1px solid #1f2937",borderRadius:10,padding:16,...style}}>{children}</div>;
+}
+function TH({children}){
+  return <th style={{padding:"5px 9px",textAlign:"left",color:"#6b7280",fontWeight:600,fontSize:9,letterSpacing:"0.08em",textTransform:"uppercase",whiteSpace:"nowrap",borderBottom:"1px solid #1f2937"}}>{children}</th>;
+}
+
+// ── OVERVIEW ─────────────────────────────────────────────────────────────────
+function Overview({health,daily,market}){
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <Card>
+        <SH accent="#3b82f6">System Status</SH>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:9}}>
+          {[["Bot",health.bot],["Broker",health.broker],["Data Feed",health.data_feed]].map(([k,v])=>(
+            <div key={k} style={{display:"flex",alignItems:"center",background:"#111827",borderRadius:6,padding:"9px 12px"}}>
+              <Dot status={v}/>
+              <div>
+                <div style={{fontSize:9,color:"#6b7280",textTransform:"uppercase",letterSpacing:"0.08em"}}>{k}</div>
+                <div style={{fontSize:11,fontWeight:600,color:"#e8eaf0"}}>{v}</div>
+              </div>
+            </div>
+          ))}
+          {[
+            ["Mode",health.mode,health.mode==="PAPER"?"#f0c040":"#e05050"],
+            ["API Latency",`${health.latency_ms}ms`,"#e8eaf0"],
+            ["Kill Switch",health.kill_switch?"ARMED":"SAFE",health.kill_switch?"#e05050":"#00e5a0"],
+            ["Errors",health.errors,health.errors>0?"#e05050":"#00e5a0"],
+            ["Uptime",health.uptime,"#e8eaf0"],
+            ["Last Scan",health.last_scan,"#e8eaf0"],
+          ].map(([k,v,c])=>(
+            <div key={k} style={{background:"#111827",borderRadius:6,padding:"9px 12px"}}>
+              <div style={{fontSize:9,color:"#6b7280",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:2}}>{k}</div>
+              <div style={{fontSize:11,fontWeight:700,color:c}}>{v}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+      <Card>
+        <SH accent="#00e5a0">Daily Performance</SH>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:9}}>
+          <StatCard label="Net P&L"        value={fmtD(daily.pnl)}                        vc={pnlCol(daily.pnl)}/>
+          <StatCard label="Win Rate"        value={`${(daily.win_rate*100).toFixed(0)}%`}  sub={`${daily.trades} trades`}/>
+          <StatCard label="Avg R"           value={`${fmt(daily.avg_r)}R`}                 vc={pnlCol(daily.avg_r)}/>
+          <StatCard label="Max Drawdown"    value={fmtD(daily.max_dd)}                     vc={pnlCol(daily.max_dd)}/>
+          <StatCard label="Open Risk"       value={`${daily.open_risk}%`}                  sub="of equity"/>
+          <StatCard label="Loss Limit Rem." value={`$${daily.loss_limit_rem.toLocaleString()}`} vc="#f0c040"/>
+        </div>
+      </Card>
+      <Card>
+        <SH accent="#a855f7">Market Regime</SH>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:9}}>
+          <StatCard label="Regime"  value={market.regime.replace(/_/g," ")} vc="#a855f7"/>
+          <StatCard label="SPY Gap" value={fmtP(market.spy_gap)}  vc={pnlCol(market.spy_gap)}/>
+          <StatCard label="QQQ Gap" value={fmtP(market.qqq_gap)}  vc={pnlCol(market.qqq_gap)}/>
+          <StatCard label="IWM Gap" value={fmtP(market.iwm_gap)}  vc={pnlCol(market.iwm_gap)}/>
+          <StatCard label="VIX"     value={market.vix.toFixed(1)} vc={market.vix>20?"#e05050":"#00e5a0"}/>
+          <StatCard label="Breadth" value={market.breadth}/>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ── SCANNER ──────────────────────────────────────────────────────────────────
+function Scanner({results}){
+  const [filter,setFilter]=useState("ALL");
+  const [search,setSearch]=useState("");
+  const [sel,setSel]=useState(null);
+  const rows=results
+    .filter(r=>filter==="ALL"||(filter==="PASSED"&&r.passes)||(filter==="REJECTED"&&!r.passes))
+    .filter(r=>r.symbol.includes(search.toUpperCase()))
+    .sort((a,b)=>b.score-a.score);
+  return(
+    <div style={{display:"flex",gap:13}}>
+      <div style={{flex:1,minWidth:0}}>
+        <Card>
+          <SH accent="#3b82f6">Scanner — {results.length} symbols scanned</SH>
+          <div style={{display:"flex",gap:7,marginBottom:13,flexWrap:"wrap",alignItems:"center"}}>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search…"
+              style={{background:"#111827",border:"1px solid #374151",borderRadius:5,padding:"5px 10px",color:"#e8eaf0",fontSize:10,width:120,outline:"none",fontFamily:"monospace"}}/>
+            {["ALL","PASSED","REJECTED"].map(f=>(
+              <button key={f} onClick={()=>setFilter(f)} style={{background:filter===f?"#1d4ed8":"#111827",border:"1px solid #374151",borderRadius:5,padding:"5px 12px",color:"#e8eaf0",fontSize:9,cursor:"pointer",fontWeight:filter===f?700:400,fontFamily:"monospace"}}>{f}</button>
+            ))}
+          </div>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}>
+              <thead><tr><TH>Symbol</TH><TH>Score</TH><TH>Gap%</TH><TH>Rel.Vol</TH><TH>Spread%</TH><TH>Catalyst</TH><TH>Trend Q</TH><TH>Float Rot</TH><TH>Status</TH></tr></thead>
+              <tbody>
+                {rows.map(r=>(
+                  <tr key={r.symbol} onClick={()=>setSel(sel?.symbol===r.symbol?null:r)}
+                    style={{borderBottom:"1px solid #111827",cursor:"pointer",background:sel?.symbol===r.symbol?"#131c2e":"transparent"}}>
+                    <td style={{padding:"7px 9px",fontWeight:700,color:"#e8eaf0",fontFamily:"monospace"}}>{r.symbol}</td>
+                    <td style={{padding:"7px 9px",minWidth:60}}>
+                      <div style={{color:scoreCol(r.score),fontWeight:700,fontFamily:"monospace"}}>{(r.score*100).toFixed(0)}</div>
+                      <Bar value={r.score}/>
+                    </td>
+                    <td style={{padding:"7px 9px",color:r.gap_pct>=5?"#00e5a0":r.gap_pct>=3?"#f0c040":"#e05050",fontFamily:"monospace"}}>+{r.gap_pct.toFixed(1)}%</td>
+                    <td style={{padding:"7px 9px",fontFamily:"monospace",color:"#e8eaf0"}}>{r.rel_vol.toFixed(1)}x</td>
+                    <td style={{padding:"7px 9px",color:r.spread_pct<=0.15?"#00e5a0":r.spread_pct<=0.25?"#f0c040":"#e05050",fontFamily:"monospace"}}>{r.spread_pct.toFixed(2)}%</td>
+                    <td style={{padding:"7px 9px",color:r.catalyst?"#a855f7":"#4b5563",fontSize:8}}>{r.catalyst||"—"}</td>
+                    <td style={{padding:"7px 9px",fontFamily:"monospace",color:"#e8eaf0"}}>{(r.trend_quality*100).toFixed(0)}</td>
+                    <td style={{padding:"7px 9px",fontFamily:"monospace",color:"#e8eaf0"}}>{r.float_rotation.toFixed(1)}%</td>
+                    <td style={{padding:"7px 9px"}}>
+                      {r.passes
+                        ?<span style={{background:"#052e16",color:"#00e5a0",borderRadius:3,padding:"2px 7px",fontSize:8,fontWeight:700}}>PASS</span>
+                        :<span style={{background:"#2a0b0b",color:"#e05050",borderRadius:3,padding:"2px 7px",fontSize:8,fontWeight:700}}>FAIL</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
+      {sel&&(
+        <div style={{width:250,flexShrink:0,background:"#0d1117",border:"1px solid #1f2937",borderRadius:10,padding:15,alignSelf:"flex-start"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:11}}>
+            <span style={{fontWeight:800,fontSize:16,color:"#e8eaf0",fontFamily:"monospace"}}>{sel.symbol}</span>
+            <button onClick={()=>setSel(null)} style={{background:"none",border:"none",color:"#6b7280",cursor:"pointer",fontSize:17,lineHeight:1}}>×</button>
+          </div>
+          <div style={{fontSize:8,color:"#6b7280",marginBottom:9,letterSpacing:"0.12em"}}>MODEL EXPLAINABILITY</div>
+          {[["Gap Quality",sel.gap_pct,30,"%"],["Relative Vol",sel.rel_vol,20,"x"],["Trend Quality",sel.trend_quality*100,100,""],["Catalyst Conf",sel.catalyst_conf*100,100,"%"],["Float Rotation",sel.float_rotation,10,"%"],["Score",sel.score*100,100,""]].map(([k,v,max,unit])=>(
+            <div key={k} style={{marginBottom:9}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
+                <span style={{fontSize:9,color:"#9ca3af"}}>{k}</span>
+                <span style={{fontSize:9,fontWeight:700,fontFamily:"monospace",color:scoreCol(v/max)}}>{v.toFixed(1)}{unit}</span>
+              </div>
+              <Bar value={v/max}/>
+            </div>
+          ))}
+          {sel.archetypes.length>0&&(
+            <div style={{marginTop:11}}>
+              <div style={{fontSize:8,color:"#6b7280",marginBottom:5,letterSpacing:"0.1em"}}>ARCHETYPES</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
+                {sel.archetypes.map(a=><span key={a} style={{background:"#1e293b",color:"#818cf8",borderRadius:3,padding:"2px 5px",fontSize:7,fontWeight:700}}>{a.replace(/_/g," ")}</span>)}
+              </div>
+            </div>
+          )}
+          {!sel.passes&&sel.filter_reason&&(
+            <div style={{marginTop:11,background:"#2a0b0b",borderRadius:5,padding:"9px 11px"}}>
+              <div style={{fontSize:8,color:"#e05050",fontWeight:700,marginBottom:3}}>REJECTION REASON</div>
+              <div style={{fontSize:9,color:"#fca5a5"}}>{sel.filter_reason}</div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── POSITIONS ────────────────────────────────────────────────────────────────
+function Positions({positions}){
+  return(
+    <Card>
+      <SH accent="#00e5a0">Open Positions</SH>
+      {positions.length===0&&<div style={{color:"#4b5563",padding:"18px 0"}}>No open positions.</div>}
+      <div style={{display:"flex",flexDirection:"column",gap:11}}>
+        {positions.map(p=>{
+          const ds=((p.current-p.stop)/p.current*100).toFixed(2);
+          const dt=((p.target1-p.current)/p.current*100).toFixed(2);
+          return(
+            <div key={p.symbol} style={{background:"#111827",border:`1px solid ${p.unrealized_pnl>=0?"#052e16":"#2a0b0b"}`,borderRadius:8,padding:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:11}}>
+                <div>
+                  <span style={{fontWeight:800,fontSize:17,color:"#e8eaf0",fontFamily:"monospace"}}>{p.symbol}</span>
+                  <span style={{marginLeft:9,background:"#1e3a5f",color:"#60a5fa",borderRadius:3,padding:"2px 7px",fontSize:8,fontWeight:700}}>{p.strategy}</span>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:17,fontWeight:700,fontFamily:"monospace",color:pnlCol(p.unrealized_pnl)}}>{fmtD(p.unrealized_pnl)}</div>
+                  <div style={{fontSize:10,color:pnlCol(p.r_multiple)}}>{fmt(p.r_multiple)}R</div>
+                </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:9}}>
+                {[["Entry",`$${p.entry.toFixed(2)}`],["Current",`$${p.current.toFixed(2)}`],["Stop",`$${p.stop.toFixed(2)}`],["Target 1",`$${p.target1.toFixed(2)}`],["Qty",p.qty],["Pos. Value",`$${(p.entry*p.qty).toLocaleString()}`],["→ Stop",`${ds}%`],["→ T1",`+${dt}%`]].map(([k,v])=>(
+                  <div key={k} style={{background:"#0d1117",borderRadius:5,padding:"7px 9px"}}>
+                    <div style={{fontSize:8,color:"#6b7280",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:2}}>{k}</div>
+                    <div style={{fontSize:11,fontWeight:600,color:"#e8eaf0",fontFamily:"monospace"}}>{v}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+// ── TRADES ───────────────────────────────────────────────────────────────────
+function Trades({trades}){
+  const totalPnl=trades.reduce((s,t)=>s+t.net_pnl,0);
+  const wins=trades.filter(t=>t.net_pnl>0).length;
+  const avgR=trades.reduce((s,t)=>s+t.r_multiple,0)/trades.length;
+  return(
+    <Card>
+      <SH accent="#f0c040">Trade Blotter</SH>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:9,marginBottom:16}}>
+        <StatCard label="Total P&L" value={fmtD(totalPnl)}                          vc={pnlCol(totalPnl)}/>
+        <StatCard label="Trades"    value={trades.length}/>
+        <StatCard label="Win Rate"  value={`${((wins/trades.length)*100).toFixed(0)}%`}/>
+        <StatCard label="Avg R"     value={`${fmt(avgR)}R`}                          vc={pnlCol(avgR)}/>
+      </div>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}>
+          <thead><tr><TH>Symbol</TH><TH>Side</TH><TH>Entry</TH><TH>Exit</TH><TH>Qty</TH><TH>Entry Time</TH><TH>Exit Time</TH><TH>R-Multiple</TH><TH>Net P&L</TH><TH>Exit Reason</TH><TH>Strategy</TH></tr></thead>
+          <tbody>
+            {trades.map((t,i)=>(
+              <tr key={i} style={{borderBottom:"1px solid #111827"}}>
+                <td style={{padding:"7px 9px",fontWeight:700,fontFamily:"monospace",color:"#e8eaf0"}}>{t.symbol}</td>
+                <td style={{padding:"7px 9px",color:t.side==="LONG"?"#00e5a0":"#e05050",fontWeight:700,fontSize:8}}>{t.side}</td>
+                <td style={{padding:"7px 9px",fontFamily:"monospace",color:"#e8eaf0"}}>${t.entry.toFixed(2)}</td>
+                <td style={{padding:"7px 9px",fontFamily:"monospace",color:"#e8eaf0"}}>${t.exit.toFixed(2)}</td>
+                <td style={{padding:"7px 9px",fontFamily:"monospace",color:"#9ca3af"}}>{t.qty}</td>
+                <td style={{padding:"7px 9px",color:"#9ca3af",fontSize:9}}>{t.entry_time}</td>
+                <td style={{padding:"7px 9px",color:"#9ca3af",fontSize:9}}>{t.exit_time}</td>
+                <td style={{padding:"7px 9px",fontWeight:700,fontFamily:"monospace",color:pnlCol(t.r_multiple)}}>{fmt(t.r_multiple)}R</td>
+                <td style={{padding:"7px 9px",fontWeight:700,fontFamily:"monospace",color:pnlCol(t.net_pnl)}}>{fmtD(t.net_pnl)}</td>
+                <td style={{padding:"7px 9px"}}><span style={{background:"#1e1040",color:"#a855f7",borderRadius:3,padding:"2px 6px",fontSize:8,fontWeight:700}}>{t.exit_reason}</span></td>
+                <td style={{padding:"7px 9px"}}><span style={{background:"#1e3a5f",color:"#60a5fa",borderRadius:3,padding:"2px 6px",fontSize:8,fontWeight:700}}>{t.strategy}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+// ── MISSED ───────────────────────────────────────────────────────────────────
+function Missed({missed}){
+  return(
+    <Card>
+      <SH accent="#f97316">Missed Trade Analysis — False Negatives</SH>
+      <div style={{fontSize:10,color:"#6b7280",marginBottom:14}}>Stocks the bot rejected that later moved. Use this to audit filter strictness.</div>
+      <div style={{display:"flex",flexDirection:"column",gap:11}}>
+        {missed.map((m,i)=>(
+          <div key={i} style={{background:"#111827",border:"1px solid #2a1a0a",borderRadius:8,padding:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:11}}>
+              <span style={{fontWeight:800,fontSize:16,fontFamily:"monospace",color:"#e8eaf0"}}>{m.symbol}</span>
+              <span style={{background:"#431407",color:"#f97316",borderRadius:3,padding:"2px 9px",fontSize:8,fontWeight:700}}>FALSE NEGATIVE</span>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:9}}>
+              {[["Filter Triggered",m.filter,"#fca5a5"],["Actual Value",m.filter_val,"#e8eaf0"],["Required",m.required,"#9ca3af"],["Max Move After",m.max_move,"#f97316"],["Hit +1R",m.later_hit_1r?"YES":"NO",m.later_hit_1r?"#00e5a0":"#e05050"],["Hit +2R",m.later_hit_2r?"YES":"NO",m.later_hit_2r?"#00e5a0":"#e05050"]].map(([k,v,c])=>(
+                <div key={k} style={{background:"#0d1117",borderRadius:5,padding:"7px 10px"}}>
+                  <div style={{fontSize:8,color:"#6b7280",textTransform:"uppercase",marginBottom:2}}>{k}</div>
+                  <div style={{fontSize:11,fontWeight:700,color:c,fontFamily:"monospace"}}>{v}</div>
+                </div>
+              ))}
+            </div>
+            {m.later_hit_2r&&<div style={{marginTop:9,background:"#1a0f00",border:"1px solid #78350f",borderRadius:5,padding:"7px 11px",fontSize:10,color:"#fcd34d"}}>⚠ Hit +2R after rejection. Consider loosening the <strong>{m.filter}</strong> threshold.</div>}
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// ── ANALYTICS ────────────────────────────────────────────────────────────────
+function Analytics(){
+  const buckets=[
+    {range:"80–100",trades:18,expected:0.65,actual:0.72,exp_r:0.80,act_r:0.91},
+    {range:"60–79", trades:31,expected:0.55,actual:0.52,exp_r:0.50,act_r:0.44},
+    {range:"40–59", trades:22,expected:0.45,actual:0.48,exp_r:0.20,act_r:0.31},
+    {range:"20–39", trades:14,expected:0.35,actual:0.28,exp_r:-0.10,act_r:-0.22},
+  ];
+  const strategies=[
+    {name:"VWAP_RECLAIM",trades:28,win_rate:0.64,avg_r:0.52,pf:1.82,status:"HEALTHY"},
+    {name:"FIRST_CANDLE",trades:19,win_rate:0.52,avg_r:0.21,pf:1.19,status:"WATCH"},
+  ];
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <Card>
+        <SH accent="#818cf8">Score Calibration</SH>
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}>
+            <thead><tr><TH>Score Bucket</TH><TH>Trades</TH><TH>Exp. Win%</TH><TH>Actual Win%</TH><TH>Exp. Avg R</TH><TH>Actual Avg R</TH><TH>Calibration</TH></tr></thead>
+            <tbody>
+              {buckets.map(b=>{
+                const ok=Math.abs(b.expected-b.actual)<0.1;
+                return(
+                  <tr key={b.range} style={{borderBottom:"1px solid #111827"}}>
+                    <td style={{padding:"7px 9px",fontFamily:"monospace",fontWeight:700,color:"#e8eaf0"}}>{b.range}</td>
+                    <td style={{padding:"7px 9px",color:"#9ca3af"}}>{b.trades}</td>
+                    <td style={{padding:"7px 9px",fontFamily:"monospace",color:"#6b7280"}}>{(b.expected*100).toFixed(0)}%</td>
+                    <td style={{padding:"7px 9px",fontFamily:"monospace",color:pnlCol(b.actual-0.5)}}>{(b.actual*100).toFixed(0)}%</td>
+                    <td style={{padding:"7px 9px",fontFamily:"monospace",color:"#6b7280"}}>{fmt(b.exp_r)}R</td>
+                    <td style={{padding:"7px 9px",fontFamily:"monospace",fontWeight:700,color:pnlCol(b.act_r)}}>{fmt(b.act_r)}R</td>
+                    <td style={{padding:"7px 9px"}}><span style={{background:ok?"#052e16":"#2a0b0b",color:ok?"#00e5a0":"#e05050",borderRadius:3,padding:"2px 7px",fontSize:8,fontWeight:700}}>{ok?"CALIBRATED":"DRIFT"}</span></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+      <Card>
+        <SH accent="#f0c040">Strategy Performance</SH>
+        <div style={{display:"flex",flexDirection:"column",gap:9}}>
+          {strategies.map(s=>{
+            const sc=s.status==="HEALTHY"?{bg:"#052e16",c:"#00e5a0"}:s.status==="WATCH"?{bg:"#1a1500",c:"#f0c040"}:{bg:"#2a0b0b",c:"#e05050"};
+            return(
+              <div key={s.name} style={{background:"#111827",borderRadius:7,padding:13}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:9}}>
+                  <span style={{fontWeight:700,fontFamily:"monospace",color:"#e8eaf0",fontSize:12}}>{s.name}</span>
+                  <span style={{background:sc.bg,color:sc.c,borderRadius:3,padding:"2px 9px",fontSize:8,fontWeight:700}}>{s.status}</span>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:7}}>
+                  {[["Trades",s.trades],["Win Rate",`${(s.win_rate*100).toFixed(0)}%`],["Avg R",`${fmt(s.avg_r)}R`],["Profit Factor",s.pf.toFixed(2)]].map(([k,v])=>(
+                    <div key={k} style={{background:"#0d1117",borderRadius:5,padding:"7px 9px"}}>
+                      <div style={{fontSize:8,color:"#6b7280",textTransform:"uppercase",marginBottom:2}}>{k}</div>
+                      <div style={{fontSize:12,fontWeight:700,fontFamily:"monospace",color:"#e8eaf0"}}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ── ROOT APP ─────────────────────────────────────────────────────────────────
+const TABS=["Overview","Scanner","Positions","Trades","Missed","Analytics"];
+
+function App(){
+  const [tab,setTab]=useState("Overview");
+  const [time,setTime]=useState(new Date());
+  useEffect(()=>{const id=setInterval(()=>setTime(new Date()),1000);return()=>clearInterval(id);},[]);
+  return(
+    <div style={{minHeight:"100vh",background:"#060a10",color:"#e8eaf0",fontFamily:"'Courier New',monospace"}}>
+      {/* Header */}
+      <div style={{background:"#0d1117",borderBottom:"1px solid #1f2937",padding:"10px 22px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <div style={{width:8,height:8,borderRadius:"50%",background:"#00e5a0",boxShadow:"0 0 10px #00e5a0",flexShrink:0}}/>
+          <span style={{fontSize:12,fontWeight:800,letterSpacing:"0.12em",color:"#e8eaf0"}}>QUANT COMMAND</span>
+          <span style={{fontSize:9,color:"#4b5563",letterSpacing:"0.1em"}}>v1.0 · PAPER MODE</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:10,color:"#6b7280",fontFamily:"monospace"}}>{time.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}</span>
+          <div style={{display:"flex",gap:5}}>
+            {[["BOT","RUNNING"],["BROKER","CONNECTED"],["FEED","CONNECTED"]].map(([k,v])=>(
+              <div key={k} style={{display:"flex",alignItems:"center",background:"#111827",borderRadius:4,padding:"3px 7px",gap:4}}>
+                <Dot status={v}/><span style={{fontSize:8,color:"#9ca3af",letterSpacing:"0.1em"}}>{k}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      {/* Tabs */}
+      <div style={{background:"#0d1117",borderBottom:"1px solid #1f2937",padding:"0 22px",display:"flex",overflowX:"auto"}}>
+        {TABS.map(t=>(
+          <button key={t} onClick={()=>setTab(t)} style={{background:"none",border:"none",borderBottom:`2px solid ${tab===t?"#3b82f6":"transparent"}`,padding:"10px 14px",color:tab===t?"#e8eaf0":"#6b7280",fontSize:9,cursor:"pointer",fontWeight:tab===t?700:400,letterSpacing:"0.08em",textTransform:"uppercase",transition:"all 0.15s",fontFamily:"'Courier New',monospace",whiteSpace:"nowrap",flexShrink:0}}>{t}</button>
+        ))}
+      </div>
+      {/* Body */}
+      <div style={{padding:"16px 22px",maxWidth:1400,margin:"0 auto"}}>
+        {tab==="Overview"  && <Overview  health={MOCK_HEALTH} daily={MOCK_DAILY} market={MOCK_MARKET}/>}
+        {tab==="Scanner"   && <Scanner   results={MOCK_SCANS}/>}
+        {tab==="Positions" && <Positions positions={MOCK_POSITIONS}/>}
+        {tab==="Trades"    && <Trades    trades={MOCK_TRADES}/>}
+        {tab==="Missed"    && <Missed    missed={MOCK_MISSED}/>}
+        {tab==="Analytics" && <Analytics/>}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

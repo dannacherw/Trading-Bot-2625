@@ -1,0 +1,53 @@
+# risk_config.yaml
+# Risk Management — Calibrated for $10k account targeting 65-70% win rate
+# Key changes:
+#   - default_risk_per_trade_pct: 0.35% → 0.50% (at $10k, 0.35% = $35 dollar risk,
+#     too small to size positions meaningfully — 0.50% = $50 which is workable)
+#   - max_risk_per_trade_pct: 0.50% → 0.75% (allows slightly larger on A+ setups)
+#   - min_trade_dollar_value: 500 → 300 (at $10k, 500 minimum was rejecting valid $5 stocks)
+#   - max_capital_per_position_pct: 30% → 25% (tighter concentration at small account)
+#   - max_daily_loss_pct: 2.0% → 1.5% (at $10k, 2% = $200 loss per day — survivable
+#     but 1.5% = $150 is better for drawdown management in paper trading phase)
+#   - max_trades_per_day: 6 → 5 (quality over quantity — fewer, better trades)
+#   - atr_multiplier: 1.5 → 1.2 (tighter stops = better R/R at small size)
+
+account:
+  starting_equity: 10_000.0
+  currency: "USD"
+
+daily_limits:
+  max_daily_loss_pct: 1.5             # Was 2.0 — tighter at $10k ($150 max daily loss)
+  max_daily_loss_hard_stop: true
+  max_trades_per_day: 5               # Was 6 — quality over quantity
+
+position_limits:
+  max_open_positions: 3
+  min_risk_per_trade_pct: 0.25
+  max_risk_per_trade_pct: 0.75        # Was 0.50 — allows larger on A+ setups
+  default_risk_per_trade_pct: 0.50   # Was 0.35 — $50 risk at $10k is workable
+  max_capital_per_position_pct: 25.0  # Was 30 — tighter concentration
+  min_trade_dollar_value: 300.0       # Was 500 — allows $5-10 stocks with valid size
+
+stop_loss:
+  atr_multiplier: 1.2                 # Was 1.5 — tighter stops improve R/R ratio
+  max_stop_pct: 2.5                   # Was 3.0 — hard cap tighter for $10k
+  use_vwap_as_stop: true
+  vwap_stop_buffer_pct: 0.08          # Was 0.10 — slightly tighter
+
+volatility:
+  atr_period: 14
+  atr_adjustment_threshold: 1.5
+  atr_size_reduction_factor: 0.7
+
+liquidity:
+  max_pct_of_adv: 3.0                 # Was 5.0 — at $10k we're a small player, be safe
+  min_dollar_volume_for_full_size: 3_000_000  # Was 5M — aligned with loosened scan filter
+
+spread_adjustment:
+  max_spread_for_full_size_pct: 0.12  # Was 0.10 — aligned with new scanner threshold
+  spread_size_penalty_factor: 0.5
+
+portfolio:
+  max_sector_concentration_pct: 60.0
+  max_correlated_positions: 2
+  correlation_threshold: 0.70

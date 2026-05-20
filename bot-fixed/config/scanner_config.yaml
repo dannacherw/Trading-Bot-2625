@@ -1,0 +1,69 @@
+# scanner_config.yaml
+# Premarket Scanner Configuration
+# Calibrated for 65-70% win rate on $10k account
+# Changes from previous version:
+#   - min_premarket_volume: 100k → 50k (catch more setups before 8AM)
+#   - min_premarket_dollar_volume: 1M → 500k (same reason)
+#   - min_relative_volume: 2.0x → 1.5x (2x is too strict for thin premarket)
+#   - min_range_position: 0.50 → 0.40 (slight loosening — was killing valid setups)
+#   - min_pm_float_rotation_pct: 2.0% → 1.5% (catches more catalyst plays)
+#   - max_premarket_range_pct: 15% → 20% (biotech/FDA plays often gap 15-25%)
+#   - scan window interval: 60s → 45s (faster cycle = better responsiveness)
+
+universe:
+  min_price: 5.0
+  max_universe_size: 1500
+  min_avg_daily_dollar_volume: 20_000_000
+  exclude_etfs: true
+  exclude_preferred: true
+  exclude_warrants: true
+  exclude_adrs: false       # ADRs can have clean catalyst setups
+  exclude_spacs: true
+
+premarket_filters:
+  # Tiered gap: lower threshold only with confirmed high-quality catalyst
+  min_gap_pct: 3.0                        # With catalyst confidence >= 0.75
+  min_gap_pct_no_catalyst: 5.0            # Without catalyst (was 6.0 — too strict)
+  high_quality_catalyst_min_confidence: 0.75  # Was 0.80 — slightly more inclusive
+
+  min_premarket_volume: 50_000            # Was 100k — loosened to catch early movers
+  min_relative_volume: 1.5               # Was 2.0 — 1.5x is still meaningful signal
+  min_premarket_dollar_volume: 500_000   # Was 1M — catches $5-10 stocks with real activity
+  max_spread_pct: 0.30                   # Was 0.25 — slight loosening for thinner names
+  max_premarket_range_pct: 20.0          # Was 15 — allow FDA/biotech volatility
+  min_range_position: 0.40              # Was 0.50 — stock just needs to be in upper half
+
+  # Float rotation filter (skipped if float data unavailable)
+  use_float_rotation_filter: true
+  min_pm_float_rotation_pct: 1.5        # Was 2.0 — catches more setups
+
+scan_window:
+  start_time: "08:00"
+  end_time: "09:25"
+  interval_seconds: 45                  # Was 60 — faster cycle
+
+scoring_weights:
+  # These weights are calibrated to prioritise quality of move (trend_quality)
+  # and genuine interest (relative_volume) over raw gap size.
+  # Catalyst gets more weight at 10k because smaller accounts need edge clarity.
+  trend_quality: 0.25          # Orderly move = best predictor of follow-through
+  relative_volume: 0.20        # Genuine interest vs. noise
+  catalyst_score: 0.18         # Raised from 0.12 — catalyst matters more at small size
+  gap_pct: 0.15                # Gap size (diminishing returns after 8%)
+  float_rotation_pct: 0.12    # Institutional demand signal
+  premarket_dollar_volume: 0.07  # Reduced — already gated by filter
+  spread_inverse: 0.03         # Minimal weight — already a hard filter
+
+watchlist:
+  max_focus_list_size: 5
+  max_watchlist_size: 20
+  min_score_threshold: 0.30    # Was 0.35 — more setups reach strategy layer for evaluation
+
+archetype_thresholds:
+  strong_gapper_gap_pct: 7.0              # Was 8.0
+  orderly_trend_min_trend_quality: 0.60  # Was 0.65
+  volatile_candidate_range_pct: 10.0
+  spread_risk_spread_pct: 0.20           # Was 0.15 — aligned with new max_spread
+  likely_leader_min_score: 0.72          # Was 0.75
+  catalyst_backed_min_confidence: 0.55   # Was 0.60
+  extended_premarket_range_pct: 15.0     # Was 12.0

@@ -1,0 +1,40 @@
+# execution_config.yaml
+# Execution Engine Configuration
+
+broker:
+  name: "schwab"
+  base_url: "https://api.schwabapi.com"
+  auth_url: "https://api.schwabapi.com/v1/oauth/token"
+  paper_trading: true               # SAFETY: default to paper
+  timeout_seconds: 10
+  max_retries: 3
+  retry_backoff_seconds: 1.0
+
+schwab:
+  client_id: ""                     # Set via env: SCHWAB_CLIENT_ID
+  client_secret: ""                 # Set via env: SCHWAB_CLIENT_SECRET
+  redirect_uri: "https://127.0.0.1"
+  token_refresh_buffer_seconds: 300 # Refresh token 5min before expiry
+  account_number: ""                # Set via env: SCHWAB_ACCOUNT_NUMBER
+
+orders:
+  default_order_type: "LIMIT"       # LIMIT or MARKET
+  limit_slippage_buffer_pct: 0.05   # Add 5bps to mid for limit buys
+  max_order_value: 3000.0           # Hard cap per order
+  min_order_value: 500.0
+  time_in_force: "DAY"
+
+slippage:
+  model: "percentage"               # "percentage" | "fixed" | "vwap"
+  base_slippage_pct: 0.05           # 5bps base slippage estimate
+  high_vol_slippage_multiplier: 2.0
+  spread_slippage_factor: 0.5       # Half the spread as slippage
+
+fill_simulation:                    # Used in backtesting
+  fill_probability: 0.95            # 95% fill rate on limits
+  partial_fill_probability: 0.10
+  fill_delay_seconds: 0.5           # Simulated fill latency
+
+rate_limits:
+  orders_per_second: 5
+  orders_per_minute: 60
